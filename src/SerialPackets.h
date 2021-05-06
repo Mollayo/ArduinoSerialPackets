@@ -87,7 +87,7 @@ private:
     void processReceivedPacket();
 private:
     uint16_t _time_out=100;
-    uint16_t _max_nb_trials=2;
+    uint16_t _max_nb_trials=10;
 
     void (*receiveCallback)(uint8_t *,uint8_t) = nullptr;
     void (*errorNotificationCallback)(uint8_t *,uint8_t) = nullptr;
