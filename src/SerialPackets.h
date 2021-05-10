@@ -61,30 +61,25 @@ public:
 
 
     // Get/set the time out in milliseconds for receiving the ACK packets
-    void setTimeOut(uint16_t val) 
-    {
-      _time_out=val;
-      setTimeout(_time_out*_max_nb_trials);
-    }
-    uint16_t getTimeOut() const { return _time_out; }
+    void setTimeOut(uint16_t val);
+    uint16_t getTimeOut() const;
 
     // Get/set the number of retrials before calling the error callback and giving up
-    void setNumberOfTrials(uint16_t val)
-    {
-      _max_nb_trials=val;
-      setTimeout(_time_out*_max_nb_trials);
-    }
-    uint16_t getNumberOfTrials() const { return _max_nb_trials; }
+    void setNumberOfTrials(uint16_t val);
+    uint16_t getNumberOfTrials() const;
 
-    void setDebugPort(Stream& debugPort) { _debugPort=&debugPort; }
+    void setDebugPort(Stream& debugPort);
 
     // Maximum size of the payload for one packet
-    static const uint8_t MAX_PAYLOAD_SIZE=30;
+    // Buffer size for software serial 64
+    // Safe value: 30
+    static const uint8_t MAX_PAYLOAD_SIZE=50;
 
 private:
     void send(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter);
     void receive();
     void processReceivedPacket();
+    void initRx();
 private:
     uint16_t _time_out=100;
     uint16_t _max_nb_trials=10;
@@ -99,11 +94,11 @@ private:
     uint8_t _rx_status=RX_READY;
     uint8_t _rx_idx=0;
     uint8_t _rx_buffer[MAX_PAYLOAD_SIZE+10];
-    uint8_t _rx_payload[MAX_PAYLOAD_SIZE];
+    uint8_t _rx_payload[MAX_PAYLOAD_SIZE+1];
     uint8_t _rx_payload_size=0;
     uint8_t _rx_payload_begin=0;
     uint8_t _rx_packet_type=PACKET_UNDEFINED;
-    uint8_t _rx_packet_counter=0;
+    int _rx_packet_counter=0;
     int _rx_prev_packet_counter=-1;
 
     // Data structure for sending the packets
