@@ -103,6 +103,12 @@ uint16_t crc(uint8_t *buffer, uint8_t len) {
 
 uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking)
 {
+  // Init the _tx_packet_counter with random number
+  if (!_tx_packet_counter_init)
+  {
+    _tx_packet_counter_init=true;
+    _tx_packet_counter=micros();
+  }
   if (_ack_to_be_sent)
     DEBUG_PRINT("Will send an ACK packet\n");
   else

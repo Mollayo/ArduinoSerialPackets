@@ -110,6 +110,7 @@ private:
     uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE];
     uint8_t _tx_ack_payload_size=0;
     uint8_t _tx_packet_counter=0;
+    bool _tx_packet_counter_init=false;
 
     bool _ack_to_be_sent=false;
 };
