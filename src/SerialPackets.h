@@ -63,8 +63,8 @@ public:
 
 
     // Get/set the time out in milliseconds for receiving the ACK packets
-    void setTimeOut(uint16_t val);
-    uint16_t getTimeOut() const;
+    void setACKTimeOut(uint16_t val);
+    uint16_t getACKTimeOut() const;
 
     // Get/set the number of retrials before calling the error callback and giving up
     void setNumberOfTrials(uint16_t val);

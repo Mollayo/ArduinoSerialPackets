@@ -5,7 +5,7 @@
 #define _packet_start_marker 0xFC
 #define _packet_end_marker   0xFD
 
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...)  do{ if (_debugPort) _debugPort->printf(__VA_ARGS__);} while(0)
@@ -34,13 +34,12 @@ SerialPackets::~SerialPackets()
 
 }
 
-void SerialPackets::setTimeOut(uint16_t val) 
+void SerialPackets::setACKTimeOut(uint16_t val) 
 {
   _time_out=val;
-  setTimeout(_time_out*_max_nb_trials);
 }
 
-uint16_t SerialPackets::getTimeOut() const 
+uint16_t SerialPackets::getACKTimeOut() const 
 {
   return _time_out;
 }
@@ -49,7 +48,6 @@ uint16_t SerialPackets::getTimeOut() const
 void SerialPackets::setNumberOfTrials(uint16_t val)
 {
   _max_nb_trials=val;
-  setTimeout(_time_out*_max_nb_trials);
 }
 
 uint16_t SerialPackets::getNumberOfTrials() const
@@ -60,6 +58,11 @@ uint16_t SerialPackets::getNumberOfTrials() const
 void SerialPackets::setDebugPort(Stream& debugPort)
 {
   _debugPort=&debugPort;
+#ifndef DEBUG
+  _debugPort->print("\"#define DEBUG\" should be added to the source file \"");
+  _debugPort->print(__FILE__);
+  _debugPort->println("\"");
+#endif
 }
 
 void SerialPackets::begin(Stream& stream)
