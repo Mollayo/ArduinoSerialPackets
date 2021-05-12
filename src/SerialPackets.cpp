@@ -409,6 +409,7 @@ uint8_t SerialPackets::update(bool blocking)
         _tx_status=TX_WAIT_ACK;
         _tx_time=millis();
         _tx_nb_trials++;
+        _nb_lost_packets++;
       }
       else
       {

@@ -36,12 +36,14 @@ public:
     uint32_t send(const uint8_t *payload, uint32_t len, bool blocking=false);
 
     // Set the callback for receiving packets
+    // The parameters of this callback are the payload of the packet and its length
     void setReceiveCallback(void (*callback)(uint8_t *,uint8_t)) __attribute__((always_inline))
     {
         receiveCallback = callback;
     }
 
-    // Set the callback for error notification (ACK packet not received, etc) 
+    // Set the callback for error notification (ACK packet not received, etc)
+    // The DATA packet that could not be sent are given as parameters to this callback
     void setErrorCallback(void (*callback)(uint8_t *,uint8_t)) __attribute__((always_inline))
     {
         errorNotificationCallback = callback;
@@ -75,14 +77,16 @@ public:
     // Safe value: 30
     static const uint8_t MAX_PAYLOAD_SIZE=50;
 
+    // For statistics
+    uint32_t _nb_lost_packets=0;
 private:
     void send(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter);
     void receive();
     void processReceivedPacket();
     void initRx();
 private:
-    uint16_t _time_out=100;
-    uint16_t _max_nb_trials=10;
+    uint16_t _time_out=50;        // Time after which the ACK packet is considered lost 
+    uint16_t _max_nb_trials=20;   // Number of trials (resending the DATA packet) before giving up
 
     void (*receiveCallback)(uint8_t *,uint8_t) = nullptr;
     void (*errorNotificationCallback)(uint8_t *,uint8_t) = nullptr;
