@@ -5,7 +5,7 @@
 #define _packet_start_marker 0xFC
 #define _packet_end_marker   0xFD
 
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...)  do{ if (_debugPort) _debugPort->printf(__VA_ARGS__);} while(0)
@@ -472,7 +472,7 @@ int SerialPackets::available()
 
 int SerialPackets::read()
 {
-  // To avoid trigerring the WDT
+  // To avoid triggering the WDT
   yield();
 
   // If not data, return -1
@@ -492,7 +492,7 @@ int SerialPackets::read()
 
 int SerialPackets::peek() 
 {
-  // To avoid trigerring the WDT
+  // To avoid triggering the WDT
   yield();
 
   if (_rx_status != RX_READY)
