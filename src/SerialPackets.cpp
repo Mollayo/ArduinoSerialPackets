@@ -134,10 +134,12 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
   if (_tx_ack_to_be_sent)
   {
     // If the packet is sent while porcessing an ACK packet
-    //DEBUG_PRINT("ACK load size %d\n",len);
     // Make a copy of the payload
     _tx_ack_payload_size=len;
     memcpy(_tx_ack_payload, payload, _tx_ack_payload_size);
+    // _tx_ack_packet_type is supposed to be PACKET_ACK, we send the ACK immediatly
+    send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+
     _tx_ack_to_be_sent=false;
     return len;
   }
@@ -223,6 +225,8 @@ void SerialPackets::processReceivedPacket()
     // In case this is a new DATA packet (i.e. not a packet that is 
     // sent again because of not receiving the ACK packet)
     // If this ACK is new packet (i.e. not a packet that is sent again because of a lost packet)
+    if (_tx_ack_packet_type==PACKET_DATA_ACK)
+       _tx_ack_to_be_sent=true;
     if (_rx_prev_packet_counter!=_rx_packet_counter)
     {
       _rx_prev_packet_counter=_rx_packet_counter;
@@ -234,7 +238,6 @@ void SerialPackets::processReceivedPacket()
         // In this callback, the _tx_ack_payload is filled with the user's data
         if (receiveDataCallback!=nullptr)
         {
-          _tx_ack_to_be_sent=true;
           memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
           _rx_callback_payload_size=_rx_payload_size;
           receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
@@ -297,7 +300,14 @@ void SerialPackets::processReceivedPacket()
       DEBUG_PRINT("Packet with type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_prev_packet_counter);
     // Send the ACK packet
     // For ACK packet, the packet counter is the one of the DATA packet that was previously received
-    send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+    if (_tx_ack_packet_type==PACKET_DATA_ACK)
+    {
+      if (_tx_ack_to_be_sent)
+        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+      _tx_ack_to_be_sent=false;
+    }
+    else
+      send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
   }
   else if (_rx_packet_type%2 == 1)
   {
