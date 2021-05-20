@@ -3,6 +3,8 @@
 
 
 #include "Arduino.h"
+
+// https://github.com/bakercp/CRC32
 #include <CRC32.h>
 
 
@@ -23,9 +25,8 @@
 #define RX_READY	      0
 #define RX_BUSY               1
 
-#define ERROR_FILE_ALREADY_BEING_SENT  -1
-#define ERROR_FILE_ACK_NOT_RECEIVED    -2
-#define ERROR_FILE_OTHER               -3
+#define ERROR_FILE_ACK_NOT_RECEIVED    -1
+#define ERROR_FILE_OTHER               -2
 
 
 class SerialPackets : public Stream
@@ -34,7 +35,7 @@ public:
     SerialPackets();
     ~SerialPackets();
 
-    void begin(Stream& stream);
+    void begin(Stream& stream, uint8_t packetCounterInit=0);
     void end();
 
     // Process the incoming packets and return the status. It can be TX_READY or TX_WAIT_ACK
@@ -63,7 +64,7 @@ public:
 
     void setOpenFileCallback(bool (*callback)(uint8_t *,uint8_t));
     void setReceiveFileDataCallback(bool (*callback)(uint8_t *,uint8_t));
-    void setCloseFileCallback(bool (*callback)(uint8_t *,uint8_t));
+    void setCloseFileCallback(void (*callback)(uint8_t *,uint8_t));
 
     /////////////////////////////////////////
     // For using SerialPackets as a stream //
@@ -101,6 +102,8 @@ private:
     void processReceivedPacket();
     void initRx();
     void initTx();
+    uint16_t crc(uint8_t *buffer, uint8_t len);
+
 private:
     uint16_t _time_out=50;        // Time after which the ACK packet is considered lost 
     uint16_t _max_nb_trials=40;   // 20 // Number of trials (resending the DATA packet) before giving up
@@ -112,7 +115,7 @@ private:
     void (*receiveDataCallback)(uint8_t *,uint8_t) = nullptr;
     bool (*openFileCallback)(uint8_t *,uint8_t) = nullptr;
     bool (*receiveFileDataCallback)(uint8_t *,uint8_t) = nullptr;
-    bool (*closeFileCallback)(uint8_t *,uint8_t) = nullptr;
+    void (*closeFileCallback)(uint8_t *,uint8_t) = nullptr;
 
 
     Stream* _stream=nullptr;
@@ -132,6 +135,7 @@ private:
     int _rx_prev_packet_counter=-1;
     int _rx_prev_ack_packet_counter=-1;
     uint8_t _rx_ack_packet_counter=0;
+    int8_t _rx_file_last_error=0;
     CRC32 _rx_file_crc;
 
     // Data structure for sending the packets
@@ -146,12 +150,12 @@ private:
 
     uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE];
     uint8_t _tx_ack_payload_size=0;
-    bool _tx_ack_to_be_sent=false;
+    bool _tx_ack_to_be_filled=false;
     uint8_t _tx_ack_packet_counter=0;
     uint8_t _tx_ack_packet_type=PACKET_UNDEFINED;
+    bool _tx_ack_ready_to_be_sent=false;
 
     CRC32 _tx_file_crc;
-    bool _tx_file_being_sent=false;
     int8_t _tx_file_last_error=0;
 };
 

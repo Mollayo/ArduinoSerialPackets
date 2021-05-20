@@ -7,7 +7,7 @@
 #define _packet_start_marker 0xFC
 #define _packet_end_marker   0xFD
 
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...)  do{ if (_debugPort) _debugPort->printf(__VA_ARGS__);} while(0)
@@ -67,7 +67,7 @@ void SerialPackets::setDebugPort(Stream& debugPort)
 #endif
 }
 
-void SerialPackets::begin(Stream& stream)
+void SerialPackets::begin(Stream& stream, uint8_t packetCounterInit)
 {
   _stream=&stream;
   // Flush the stream for a clean start
@@ -83,17 +83,25 @@ void SerialPackets::begin(Stream& stream)
   // Data structure for sending the packets
   initTx();
   // Ideally, _tx_packet_counter should be initialised with a random number
-  _tx_packet_counter_init=false;
+  if (packetCounterInit!=0)
+  {
+    _tx_packet_counter=packetCounterInit;
+    _tx_packet_counter_init=true;
+  }
+  else
+    _tx_packet_counter_init=false;
   _tx_ack_payload_size=0;
-  _tx_ack_to_be_sent=false;
+  _tx_ack_to_be_filled=false;
+  _tx_ack_ready_to_be_sent=false;
 }
 
 void SerialPackets::end()
 {
-    _stream=nullptr;
+  _stream=nullptr;
 }
 
-uint16_t crc(uint8_t *buffer, uint8_t len) {
+uint16_t SerialPackets::crc(uint8_t *buffer, uint8_t len)
+{
   uint16_t c = 0;
   for (int i = 1; i < len; i++) {
     c += buffer[i];
@@ -131,7 +139,7 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
   if (len>MAX_PAYLOAD_SIZE)
     len=MAX_PAYLOAD_SIZE;
 
-  if (_tx_ack_to_be_sent)
+  if (_tx_ack_to_be_filled)
   {
     // If the packet is sent while porcessing an ACK packet
     // Make a copy of the payload
@@ -140,7 +148,7 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
     // _tx_ack_packet_type is supposed to be PACKET_ACK, we send the ACK immediatly
     send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
 
-    _tx_ack_to_be_sent=false;
+    _tx_ack_to_be_filled=false;
     return len;
   }
   else
@@ -217,57 +225,68 @@ void SerialPackets::send(uint8_t *payload, uint8_t len, uint8_t packet_type, uin
 
 void SerialPackets::processReceivedPacket()
 {
-
-  //DEBUG_PRINT("Packet of type %d and counter 0x%02X arrived\n", _rx_packet_type, _rx_packet_counter);
+  DEBUG_PRINT("Packet of type %d and counter 0x%02X arrived\n", _rx_packet_type, _rx_packet_counter);
   if (_rx_packet_type%2 == 0)
   {
     // If the packet type is DATA packet, we send the ACK packet
     // In case this is a new DATA packet (i.e. not a packet that is 
     // sent again because of not receiving the ACK packet)
     // If this ACK is new packet (i.e. not a packet that is sent again because of a lost packet)
-    if (_tx_ack_packet_type==PACKET_DATA_ACK)
-       _tx_ack_to_be_sent=true;
     if (_rx_prev_packet_counter!=_rx_packet_counter)
     {
       _rx_prev_packet_counter=_rx_packet_counter;
-      // By default, the ACK packet has no payload
-      bool OK=true;
+      _tx_ack_ready_to_be_sent=false;
+      // By default, no payload
       _tx_ack_payload_size=0;
-      if (_rx_packet_type==PACKET_DATA)
-      {
-        // In this callback, the _tx_ack_payload is filled with the user's data
-        if (receiveDataCallback!=nullptr)
-        {
-          memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
-          _rx_callback_payload_size=_rx_payload_size;
-          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
-          _tx_ack_to_be_sent=false;
-        }
-      }
-      else if (_rx_packet_type==PACKET_FILE_OPEN)
+      if (_rx_packet_type==PACKET_FILE_OPEN)
       {
         // Start receiving a file
         _rx_file_crc.reset();
+        _rx_file_last_error=0;
+
+        // Call the callback
         if (openFileCallback!=nullptr)
         {
-          //Serial.println(_rx_payload_size);
           memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
           _rx_callback_payload_size=_rx_payload_size;
-          //Serial.println(_rx_callback_payload_size);
-          OK=openFileCallback(_rx_callback_payload,_rx_callback_payload_size);
+          bool OK=openFileCallback(_rx_callback_payload,_rx_callback_payload_size);
+          if (!OK)
+            _rx_file_last_error=ERROR_FILE_OTHER;
         }
+
+        // Send the ACK
+        if (_rx_file_last_error!=0)
+        {
+          _tx_ack_payload[0]='E';	// E for Error
+          _tx_ack_payload_size=1;
+        }
+        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        _tx_ack_ready_to_be_sent=true;
       }
       else if (_rx_packet_type==PACKET_FILE_DATA)
       {
-        // Update the CRC32 for the received file
-        for (int i = 0; i < _rx_payload_size; i++)
-          _rx_file_crc.update(_rx_payload[i]);
+        // Call the callback
         if (receiveFileDataCallback!=nullptr)
         {
           memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
           _rx_callback_payload_size=_rx_payload_size;
-          OK=receiveFileDataCallback(_rx_callback_payload,_rx_callback_payload_size);
+          bool OK=receiveFileDataCallback(_rx_callback_payload,_rx_callback_payload_size);
+          if (!OK)
+            _rx_file_last_error=ERROR_FILE_OTHER;
         }
+
+        // Send the ACK
+        if (_rx_file_last_error!=0)
+        {
+          _tx_ack_payload[0]='E';	// E for Error
+          _tx_ack_payload_size=1;
+        }
+        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        _tx_ack_ready_to_be_sent=true;
+
+        // Update the CRC32 for the received file
+        for (int i = 0; i < _rx_payload_size; i++)
+          _rx_file_crc.update(_rx_payload[i]);
       }
       else if (_rx_packet_type==PACKET_FILE_CLOSE)
       {
@@ -275,39 +294,58 @@ void SerialPackets::processReceivedPacket()
         uint32_t rcvCrc;
         memcpy(&rcvCrc,_rx_payload,_rx_payload_size);
         uint32_t crc=_rx_file_crc.finalize();
-        if (rcvCrc==crc)
-        {
-          // The CRC match. We call the callback for closing the file
-          if (closeFileCallback!=nullptr)
-            OK=closeFileCallback((uint8_t*)&crc,sizeof(crc));
-          DEBUG_PRINT("CRC matching for the uploaded file 0x%08X\n",crc);
-        }
-        else
+        if (rcvCrc!=crc)
         {
           DEBUG_PRINT("CRC not matching for the uploaded file 0x%08X vs 0x%08X\n" ,crc, rcvCrc);
           // Send a message to indicate the mismatch of the CRC
-          OK=false;
-        } 
-      }
-      if (!OK)
-      {
-        sprintf((char*)_tx_ack_payload,"ERROR");
-        _tx_ack_payload_size=strlen((char*)_tx_ack_payload);
-      }
-      DEBUG_PRINT("Packet with type %d and counter 0x%02X processed\n", _rx_packet_type, _rx_prev_packet_counter);
-    }
-    else
-      DEBUG_PRINT("Packet with type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_prev_packet_counter);
-    // Send the ACK packet
-    // For ACK packet, the packet counter is the one of the DATA packet that was previously received
-    if (_tx_ack_packet_type==PACKET_DATA_ACK)
-    {
-      if (_tx_ack_to_be_sent)
+          _rx_file_last_error=ERROR_FILE_OTHER;
+        }
+        if (rcvCrc==crc)
+        {
+          DEBUG_PRINT("CRC matching for the uploaded file 0x%08X\n",crc);
+          // The CRC match. We call the callback for closing the file
+          if (closeFileCallback!=nullptr)
+            closeFileCallback((uint8_t*)&crc,sizeof(crc));
+        }
+
+        // Send the ACK
+        if (_rx_file_last_error!=0)
+        {
+          _tx_ack_payload[0]='E';	// E for Error
+          _tx_ack_payload_size=1;
+        }
         send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
-      _tx_ack_to_be_sent=false;
+        _tx_ack_ready_to_be_sent=true;
+      }
+      else if (_tx_ack_packet_type==PACKET_DATA_ACK)
+      {
+        // In this callback, the _tx_ack_payload is filled with the user's data
+        if (receiveDataCallback!=nullptr)
+        {
+          memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
+          _rx_callback_payload_size=_rx_payload_size;
+          _tx_ack_to_be_filled=true;
+          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
+          // If the ACK not sent in the receiveDataCallback, we send it now
+          if (_tx_ack_to_be_filled)
+            send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+          _tx_ack_to_be_filled=false;
+          _tx_ack_ready_to_be_sent=true;
+        }
+        else
+        {
+          // No callback. We send the ack 
+          send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+          _tx_ack_ready_to_be_sent=true;
+        }
+      }
     }
     else
-      send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+    {
+      DEBUG_PRINT("Packet of type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_packet_counter);
+      if (_tx_ack_ready_to_be_sent)
+        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+    }
   }
   else if (_rx_packet_type%2 == 1)
   {
@@ -331,7 +369,8 @@ void SerialPackets::processReceivedPacket()
                _rx_packet_type==PACKET_FILE_DATA_ACK ||
                _rx_packet_type==PACKET_FILE_CLOSE_ACK )
       {
-        if (_rx_payload_size==strlen("ERROR") && strcmp((char*)_rx_payload,"ERROR")==0)
+        // This indicates an error sent by the MCU receiving the file
+        if (_rx_payload_size==1 && _rx_payload[0]=='E')
           _tx_file_last_error=ERROR_FILE_OTHER;
       }
     }
@@ -546,15 +585,21 @@ uint8_t SerialPackets::update(bool blocking)
   return _tx_status;
 }
 
-// For using the SerialPackets as a stream
+// For using the SerialPackets as a stream. This is used indirectly by printf
 size_t SerialPackets::write(uint8_t data)
 {
   return send(&data, 1, true);
 }
 
+// For using the SerialPackets as a stream. This is used indirectly by printf
 size_t SerialPackets::write(const uint8_t *buffer, size_t size)
 {
-  return send(buffer, size, true);
+  // If the size is too large, the buffer should be splitted to send several packets
+  // This is to avoid cutting the strings
+  size_t sentSize=0;
+  while(sentSize<size)
+    sentSize+=send(&buffer[sentSize], size-sentSize, true);
+  return sentSize;
 }
 
 int SerialPackets::availableForWrite()
@@ -609,11 +654,7 @@ int SerialPackets::peek()
 // Start sending a file. 
 int SerialPackets::openFile(const char* fileName)
 {
-  DEBUG_PRINT("SerialPackets::openFile\n");
-  // Can send one file
-  if (_tx_file_being_sent)
-    return ERROR_FILE_ALREADY_BEING_SENT;
-  _tx_file_being_sent=true;
+  // Can send one file at once
   _tx_file_last_error=0;
 
   // Wait for the previous ACK to be received
@@ -669,8 +710,6 @@ int SerialPackets::closeFile(int32_t crc)
   // Wait for the previous ACK to be received
   update(true);
 
-  _tx_file_being_sent=false;
-
   return _tx_file_last_error;
 }
 
@@ -684,7 +723,7 @@ void SerialPackets::setReceiveFileDataCallback(bool (*callback)(uint8_t *,uint8_
   receiveFileDataCallback = callback;
 }
 
-void SerialPackets::setCloseFileCallback(bool (*callback)(uint8_t *,uint8_t))
+void SerialPackets::setCloseFileCallback(void (*callback)(uint8_t *,uint8_t))
 {
   closeFileCallback = callback;
 }
