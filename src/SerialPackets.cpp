@@ -3,7 +3,7 @@
 
 
 // Ideally, the marker for _packet_start should be different from any other values in the packet
-// The risk could be to start reading in the miffle of the packets over and over
+// The risk could be to start reading in the middle of the packets over and over
 #define _packet_start_marker 0xFC
 #define _packet_end_marker   0xFD
 
@@ -326,6 +326,9 @@ void SerialPackets::processReceivedPacket()
           _rx_callback_payload_size=_rx_payload_size;
           _tx_ack_to_be_filled=true;
           receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
+          // Since the callback has been called, the payload should not be accessible through read() or readString()
+          _rx_payload_size=0;
+          _rx_payload_begin=0;
           // If the ACK not sent in the receiveDataCallback, we send it now
           if (_tx_ack_to_be_filled)
             send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
@@ -334,9 +337,10 @@ void SerialPackets::processReceivedPacket()
         }
         else
         {
-          // No callback. We send the ack 
-          send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
-          _tx_ack_ready_to_be_sent=true;
+          // No callback. The user is expected to use readString().
+          // In fact, the ack should not be sent before readString()
+          // Otherwise the next packet migh be sent immediatly and the current one migh be lost
+          _tx_ack_ready_to_be_sent=false;
         }
       }
     }
@@ -635,6 +639,13 @@ int SerialPackets::read()
   {
     _rx_payload_begin=0;
     _rx_payload_size=0;
+    if (_tx_ack_ready_to_be_sent==false)
+    {
+      // The packet has been entirely read by the user (through readString).
+      // It is time to send the ack in order to receive the next packet
+      send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+      _tx_ack_ready_to_be_sent=true;
+    }
   }
   return val;
 }
