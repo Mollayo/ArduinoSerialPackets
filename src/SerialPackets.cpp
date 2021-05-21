@@ -325,10 +325,11 @@ void SerialPackets::processReceivedPacket()
           memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
           _rx_callback_payload_size=_rx_payload_size;
           _tx_ack_to_be_filled=true;
-          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
           // Since the callback has been called, the payload should not be accessible through read() or readString()
           _rx_payload_size=0;
           _rx_payload_begin=0;
+          // Call the user callback
+          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
           // If the ACK not sent in the receiveDataCallback, we send it now
           if (_tx_ack_to_be_filled)
             send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
@@ -347,6 +348,7 @@ void SerialPackets::processReceivedPacket()
     else
     {
       DEBUG_PRINT("Packet of type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_packet_counter);
+      // The ACK is sent only when it is ready
       if (_tx_ack_ready_to_be_sent)
         send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
     }
