@@ -100,8 +100,8 @@ private:
     void send(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter);
     void receive();
     void processReceivedPacket();
-    void initRx();
-    void initTx();
+    void resetRx();
+    void resetTx();
     uint16_t crc(uint8_t *buffer, uint8_t len);
 
 private:
@@ -146,7 +146,6 @@ private:
     uint8_t _tx_payload_size=0;
     uint8_t _tx_packet_counter=0;
     uint8_t _tx_packet_type=PACKET_DATA;
-    bool _tx_packet_counter_init=false;
 
     uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE];
     uint8_t _tx_ack_payload_size=0;

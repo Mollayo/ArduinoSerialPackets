@@ -77,19 +77,13 @@ void SerialPackets::begin(Stream& stream, uint8_t packetCounterInit)
   _rx_prev_packet_counter=-1;
   _rx_prev_ack_packet_counter=-1;
   _rx_packet_counter=0;
-  initRx();
+  resetRx();
   memset(_rx_payload,0x00,sizeof(_rx_payload));
 
   // Data structure for sending the packets
-  initTx();
+  resetTx();
   // Ideally, _tx_packet_counter should be initialised with a random number
-  if (packetCounterInit!=0)
-  {
-    _tx_packet_counter=packetCounterInit;
-    _tx_packet_counter_init=true;
-  }
-  else
-    _tx_packet_counter_init=false;
+  _tx_packet_counter=packetCounterInit;
   _tx_ack_payload_size=0;
   _tx_ack_to_be_filled=false;
   _tx_ack_ready_to_be_sent=false;
@@ -121,13 +115,6 @@ void SerialPackets::setErrorCallback(void (*callback)(uint8_t *,uint8_t))
 
 uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking)
 {
-  // Init the _tx_packet_counter with random number
-  if (!_tx_packet_counter_init)
-  {
-    _tx_packet_counter_init=true;
-    _tx_packet_counter=micros();
-  }
-
   if (!_stream)
   {
     DEBUG_PRINT("Serial port not defined\n");
@@ -141,7 +128,7 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
 
   if (_tx_ack_to_be_filled)
   {
-    // If the packet is sent while porcessing an ACK packet
+    // If the packet is sent while processing an ACK packet
     // Make a copy of the payload
     _tx_ack_payload_size=len;
     memcpy(_tx_ack_payload, payload, _tx_ack_payload_size);
@@ -360,7 +347,7 @@ void SerialPackets::processReceivedPacket()
     if (_rx_prev_ack_packet_counter!=_rx_packet_counter)
     {
       _rx_prev_ack_packet_counter=_rx_packet_counter;
-      initTx();
+      resetTx();
       // Callback for this ACK packet in case the user has put some data in it
       if (_rx_packet_type==PACKET_DATA_ACK)
       {
@@ -385,7 +372,7 @@ void SerialPackets::processReceivedPacket()
   }
 }
 
-void SerialPackets::initRx()
+void SerialPackets::resetRx()
 {
   _rx_status=RX_READY;
   _rx_idx=0;
@@ -394,7 +381,7 @@ void SerialPackets::initRx()
   _rx_packet_type=PACKET_UNDEFINED;
 }
 
-void SerialPackets::initTx()
+void SerialPackets::resetTx()
 {
   _tx_packet_counter++;    // Increase the packet counter
   _tx_status=TX_READY;
@@ -424,7 +411,7 @@ void SerialPackets::receive()
 
     if (_rx_idx == sizeof(_rx_buffer)) {
       DEBUG_PRINT("Rx buffer overflow\n");
-      initRx();
+      resetRx();
       continue;
     }
 
@@ -435,7 +422,7 @@ void SerialPackets::receive()
     {
       // start marker
       DEBUG_PRINT("Received wrong start marker: 0x%02X\n", b);
-      initRx();
+      resetRx();
       continue;
     }
 
@@ -446,7 +433,7 @@ void SerialPackets::receive()
       if (_rx_packet_type<PACKET_DATA || _rx_packet_type>PACKET_FILE_CLOSE_ACK)
       {
           DEBUG_PRINT("Wrong packet type 0x%02X\n", _rx_packet_type);
-          initRx();
+          resetRx();
           continue;
       }
     }
@@ -463,7 +450,7 @@ void SerialPackets::receive()
           // packet counter is same as previous tx packet
           DEBUG_PRINT("Wrong packet counter. Current value 0x%02X but should be 0x%02X\n", 
                       _rx_packet_counter, _rx_ack_packet_counter);
-          initRx();
+          resetRx();
           continue;
         }
       }
@@ -483,7 +470,7 @@ void SerialPackets::receive()
       if (_rx_payload_size > MAX_PAYLOAD_SIZE)
       {
         DEBUG_PRINT("Overflow with payload size %d\n", _rx_payload_size);
-        initRx();
+        resetRx();
         continue;
       }
     }
@@ -500,7 +487,7 @@ void SerialPackets::receive()
         DEBUG_PRINT("\n");
         DEBUG_PRINT("Checksum is 0x%02X but should be 0x%02X\n",c1,c2);
 
-        initRx();
+        resetRx();
         continue;
       }
       // Copy the payload
@@ -513,7 +500,7 @@ void SerialPackets::receive()
     if (_rx_idx == (3 + _rx_payload_size + 3) && b != _packet_end_marker) 
     { // end marker
       DEBUG_PRINT("Wrong end marker: 0x%02X\n", b);
-      initRx();
+      resetRx();
       continue;
     }
 
@@ -577,7 +564,7 @@ uint8_t SerialPackets::update(bool blocking)
           _tx_file_last_error=ERROR_FILE_ACK_NOT_RECEIVED;
         }
         // Give up sending again the DATA package, call initTx for sending next data
-        initTx();
+        resetTx();
       }
     }
     // To feed the watchdog timer
