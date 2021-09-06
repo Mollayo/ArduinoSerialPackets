@@ -152,12 +152,12 @@ private:
     uint8_t _tx_status=TX_READY;
     unsigned long _tx_time=0;
     uint8_t _tx_nb_trials=0;
-    uint8_t _tx_payload[MAX_PAYLOAD_SIZE];
+    uint8_t _tx_payload[MAX_PAYLOAD_SIZE+1];
     uint8_t _tx_payload_size=0;
     uint8_t _tx_packet_counter=0;
     uint8_t _tx_packet_type=PACKET_DATA;
 
-    uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE];
+    uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE+1];
     uint8_t _tx_ack_payload_size=0;
     bool _tx_ack_to_be_filled=false;
     uint8_t _tx_ack_packet_counter=0;
