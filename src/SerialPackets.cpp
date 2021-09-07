@@ -394,7 +394,11 @@ void SerialPackets::processReceivedPacket()
     }
     else
     {
+      // The packet has been already received (duplicated packet because of the lost of the ACK packet)
       DEBUG_PRINT("Packet of type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_packet_counter);
+      // To avoid the packet to be accessible through readString()
+      _rx_payload_size=0;
+      _rx_payload_begin=0;
       // The ACK is sent only when it is ready
       if (_tx_ack_ready_to_be_resent)
         send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
