@@ -85,7 +85,6 @@ void SerialPackets::begin(Stream& stream, uint8_t packetCounterInit)
   // Ideally, _tx_packet_counter should be initialised with a random number
   _tx_packet_counter=packetCounterInit;
   _tx_ack_payload_size=0;
-  _tx_ack_to_be_filled=false;
   _tx_ack_ready_to_be_resent=false;
 }
 
@@ -126,47 +125,32 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
   if (len>MAX_PAYLOAD_SIZE)
     len=MAX_PAYLOAD_SIZE;
 
-  if (_tx_ack_to_be_filled)
+  //DEBUG_PRINT("Will send a packet of type %d\n",_tx_packet_type);
+
+  // If the function is blocking, we wait until the previous ACK packet is received or the timeout is over
+  if (blocking)
+    update(true);
+
+  // Do not send the next packet if the ACK packet from the previous DATA packet has not been received
+  if (_tx_status!=TX_READY)
   {
-    // If the packet is sent while processing an ACK packet
-    // Make a copy of the payload
-    _tx_ack_payload_size=len;
-    memcpy(_tx_ack_payload, payload, _tx_ack_payload_size);
-    // _tx_ack_packet_type is supposed to be PACKET_ACK, we send the ACK immediatly
-    send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
-
-    _tx_ack_to_be_filled=false;
-    return len;
+    DEBUG_PRINT("Cannot send packet because previous ACK packet not received\n");
+    return 0;
   }
-  else
-  {
-    //DEBUG_PRINT("Will send a packet of type %d\n",_tx_packet_type);
-
-    // If the function is blocking, we wait until the previous ACK packet is received or the timeout is over
-    if (blocking)
-      update(true);
-
-    // Do not send the next packet if the ACK packet from the previous DATA packet has not been received
-    if (_tx_status!=TX_READY)
-    {
-      DEBUG_PRINT("Cannot send packet because previous ACK packet not received\n");
-      return 0;
-    }
-    // Copy the payload
-    _tx_payload_size=len;
-    memcpy(_tx_payload,payload,_tx_payload_size);
-    // Send the packet
-    send(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
-    // Save the expected packet counter for the ACK
-    _rx_ack_packet_counter=_tx_packet_counter;
-    // Comes back to the default packet type
-    _tx_status=TX_WAIT_ACK;
-    _tx_time=millis();
-    // If the function is blocking, we wait until the ACK packet is received or the timemout is over
-    if (blocking)
-      update(true);
-    return len;
-  }
+  // Copy the payload
+  _tx_payload_size=len;
+  memcpy(_tx_payload,payload,_tx_payload_size);
+  // Send the packet
+  send(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
+  // Save the expected packet counter for the ACK
+  _rx_ack_packet_counter=_tx_packet_counter;
+  // Comes back to the default packet type
+  _tx_status=TX_WAIT_ACK;
+  _tx_time=millis();
+  // If the function is blocking, we wait until the ACK packet is received or the timemout is over
+  if (blocking)
+    update(true);
+  return len;
 }
 
 
@@ -242,13 +226,11 @@ void SerialPackets::processReceivedPacket()
           // Call the callback
           if (openFileCallback!=nullptr)
           {
-            memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
-            _rx_callback_payload_size=_rx_payload_size;
-            // The payload should not be accessible through read() or readString()
-            _rx_payload_size=0;
-            _rx_payload_begin=0;
+            memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
+            _rx_user_payload_size=_rx_payload_size;
             // Call the callback
-            bool OK=openFileCallback(_rx_callback_payload,_rx_callback_payload_size);
+            bool OK=openFileCallback(_rx_user_payload,_rx_user_payload_size);
+            _rx_user_payload_size=0;
             if (!OK)
               _rx_file_last_error=ERROR_FILE_USER;
           }
@@ -282,12 +264,10 @@ void SerialPackets::processReceivedPacket()
           // Call the callback
 		      if (receiveFileDataCallback!=nullptr)
 		      {
-		        memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
-		        _rx_callback_payload_size=_rx_payload_size;
-            // The payload should not be accessible through read() or readString()
-            _rx_payload_size=0;
-            _rx_payload_begin=0;
-		        bool OK=receiveFileDataCallback(_rx_callback_payload,_rx_callback_payload_size);
+		        memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
+		        _rx_user_payload_size=_rx_payload_size;
+		        bool OK=receiveFileDataCallback(_rx_user_payload,_rx_user_payload_size);
+            _rx_user_payload_size=0;
 		        if (!OK)
 		          _rx_file_last_error=ERROR_FILE_USER;
 		      }
@@ -318,9 +298,6 @@ void SerialPackets::processReceivedPacket()
           // Finish receiving the file. Check matching CRC
           uint32_t rcvCrc;
           memcpy(&rcvCrc,_rx_payload,_rx_payload_size);
-          // The payload should not be accessible through read() or readString()
-          _rx_payload_size=0;
-          _rx_payload_begin=0;
           // Check CRC of the received file
           uint32_t crc=_rx_file_crc.finalize();
           if (rcvCrc!=crc)
@@ -364,28 +341,22 @@ void SerialPackets::processReceivedPacket()
         // In this callback, the _tx_ack_payload is filled with the user's data
         if (receiveDataCallback!=nullptr)
         {
-          memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
-          _rx_callback_payload_size=_rx_payload_size;
-          // if _tx_ack_to_be_filled is false, the user's message is not send with the ACK packet
-          // if _tx_ack_to_be_filled is true, the user's message is send with the ACK packet
-          _tx_ack_to_be_filled=false;
+          memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
+          _rx_user_payload_size=_rx_payload_size;
           // Send the ACK before the user's callback. This is to avoid delay due to the callback when sending the ACK packet
           send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
-          // Since the callback has been called, the payload should not be accessible through read() or readString()
-          _rx_payload_size=0;
-          _rx_payload_begin=0;
-          // Call the user callback
-          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
-          /*
-          // If the ACK not sent in the receiveDataCallback, we send it now
-          if (_tx_ack_to_be_filled)
-            send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);*/
-          _tx_ack_to_be_filled=false;
           _tx_ack_ready_to_be_resent=true;
+          // Call the user callback
+          receiveDataCallback(_rx_user_payload,_rx_user_payload_size);
+          _rx_user_payload_size=0;
         }
         else
         {
           // No callback. The user is expected to use readString().
+          memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
+          _rx_user_payload_size=_rx_payload_size;
+          _rx_user_payload_begin=0;
+
           // In fact, the ack should not be sent before readString()
           // Otherwise the next packet migh be sent immediatly and the current one migh be lost
           _tx_ack_ready_to_be_resent=false;
@@ -396,9 +367,6 @@ void SerialPackets::processReceivedPacket()
     {
       // The packet has been already received (duplicated packet because of the lost of the ACK packet)
       DEBUG_PRINT("Packet of type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_packet_counter);
-      // To avoid the packet to be accessible through readString()
-      _rx_payload_size=0;
-      _rx_payload_begin=0;
       // The ACK is sent only when it is ready
       if (_tx_ack_ready_to_be_resent)
         send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
@@ -413,17 +381,8 @@ void SerialPackets::processReceivedPacket()
     {
       _rx_prev_ack_packet_counter=_rx_packet_counter;
       resetTx();
-      // Callback for this ACK packet in case the user has put some data in it
-      if (_rx_packet_type==PACKET_DATA_ACK)
-      {
-        if (receiveDataCallback!=nullptr && _rx_payload_size>0)
-        {
-          memcpy(_rx_callback_payload,_rx_payload,_rx_payload_size+1);
-          _rx_callback_payload_size=_rx_payload_size;
-          receiveDataCallback(_rx_callback_payload,_rx_callback_payload_size);
-        }
-      }
-      else if (_rx_packet_type==PACKET_FILE_OPEN_ACK || 
+      // Process the payload from the ACK packet. The ACK packet is not supposed to contain user data
+      if (_rx_packet_type==PACKET_FILE_OPEN_ACK || 
                _rx_packet_type==PACKET_FILE_DATA_ACK ||
                _rx_packet_type==PACKET_FILE_CLOSE_ACK )
       {
@@ -446,7 +405,6 @@ void SerialPackets::resetRx()
   _rx_status=RX_READY;
   _rx_idx=0;
   _rx_payload_size=0;
-  _rx_payload_begin=0;
   _rx_packet_type=PACKET_UNDEFINED;
 }
 
@@ -535,7 +493,6 @@ void SerialPackets::receive()
     {
       // payload size
       _rx_payload_size = b;
-      _rx_payload_begin=0;
       if (_rx_payload_size > MAX_PAYLOAD_SIZE)
       {
         DEBUG_PRINT("Overflow with payload size %d\n", _rx_payload_size);
@@ -691,10 +648,11 @@ int SerialPackets::available()
   // Return 0 if in the middle of receiving a packet
   if (_rx_status != RX_READY)
     return 0;
+/*
   // Only data packet should be accessible through readString()
   if (_rx_packet_type!=PACKET_DATA)
-    return 0;
-  return _rx_payload_size-_rx_payload_begin;
+    return 0;*/
+  return _rx_user_payload_size-_rx_user_payload_begin;
 }
 
 // read() is used by readString()
@@ -706,17 +664,18 @@ int SerialPackets::read()
   // Return -1 if in the middle of receiving a packet
   if (_rx_status != RX_READY)
     return -1;
+/*
   // Only data packet should be accessible through readString()
   if (_rx_packet_type!=PACKET_DATA)
+    return -1;*/
+  if (_rx_user_payload_begin==_rx_user_payload_size)
     return -1;
-  if (_rx_payload_begin==_rx_payload_size)
-    return -1;
-  int val=_rx_payload[_rx_payload_begin];
-  _rx_payload_begin++;
-  if (_rx_payload_begin==_rx_payload_size)
+  int val=_rx_user_payload[_rx_user_payload_begin];
+  _rx_user_payload_begin++;
+  if (_rx_user_payload_begin==_rx_user_payload_size)
   {
-    _rx_payload_begin=0;
-    _rx_payload_size=0;
+    _rx_user_payload_begin=0;
+    _rx_user_payload_size=0;
     if (_tx_ack_ready_to_be_resent==false)
     {
       // The packet has been entirely read by the user (through readString).
@@ -736,12 +695,13 @@ int SerialPackets::peek()
   // Return -1 if in the middle of receiving a packet
   if (_rx_status != RX_READY)
     return -1;
+/*
   // Only data packet should be accessible through readString()
   if (_rx_packet_type!=PACKET_DATA)
+    return -1;*/
+  if (_rx_user_payload_begin==_rx_user_payload_size)
     return -1;
-  if (_rx_payload_begin==_rx_payload_size)
-    return -1;
-  return _rx_payload[_rx_payload_begin];
+  return _rx_user_payload[_rx_user_payload_begin];
 }
 
 // Start sending a file. 

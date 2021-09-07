@@ -136,9 +136,9 @@ private:
     uint8_t _rx_buffer[MAX_PAYLOAD_SIZE+10];
     uint8_t _rx_payload[MAX_PAYLOAD_SIZE+1];
     uint8_t _rx_payload_size=0;
-    uint8_t _rx_callback_payload[MAX_PAYLOAD_SIZE+1];
-    uint8_t _rx_callback_payload_size=0;
-    uint8_t _rx_payload_begin=0;
+    uint8_t _rx_user_payload[MAX_PAYLOAD_SIZE+1];
+    uint8_t _rx_user_payload_size=0;
+    uint8_t _rx_user_payload_begin=0;
     uint8_t _rx_packet_type=PACKET_UNDEFINED;
     int _rx_packet_counter=0;
     int _rx_prev_packet_counter=-1;
@@ -159,7 +159,6 @@ private:
 
     uint8_t _tx_ack_payload[MAX_PAYLOAD_SIZE+1];
     uint8_t _tx_ack_payload_size=0;
-    bool _tx_ack_to_be_filled=false;
     uint8_t _tx_ack_packet_counter=0;
     uint8_t _tx_ack_packet_type=PACKET_UNDEFINED;
     bool _tx_ack_ready_to_be_resent=false;
