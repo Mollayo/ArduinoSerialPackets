@@ -2,10 +2,23 @@
 
 
 
-// Ideally, the marker for _packet_start should be different from any other values in the packet
-// The risk could be to start reading in the middle of the packets over and over
-#define _packet_start_marker 0xFC
-#define _packet_end_marker   0xFD
+// The byte sequence for _packet_start_marker is different from any other values in the packet
+// This is why the start marker is composed of 4 bytes.
+// Any other bytes in the payload that are equal to one of  _packet_start_marker_ bytes are duplicated
+// so that even if the payload contains the byte sequence of the start maker, this cannot be missinterpreted as start marker.
+// See encodePayload() and decodePayload()
+
+#define _packet_start_marker_1 0xFB
+#define _packet_start_marker_2 0xFC
+#define _packet_start_marker_3 0xFD
+#define _packet_start_marker_4 0xFE
+
+/* Usefull for debugging
+#define _packet_start_marker_1 'S'
+#define _packet_start_marker_2 'T'
+#define _packet_start_marker_3 'A'
+#define _packet_start_marker_4 'R'
+*/
 
 #define DEBUG
 
@@ -112,6 +125,64 @@ void SerialPackets::setErrorCallback(void (*callback)(uint8_t *,uint8_t))
   errorNotificationCallback = callback;
 }
 
+// The payload should not contain any byte sequence which can be interpreted as the start marker
+uint32_t SerialPackets::encodePayload(const uint8_t *payload, uint32_t &len, uint8_t *encodedPayload)
+{
+  uint32_t idx=0,encodeIdx=0;
+  while(true)
+  {
+  	if (encodeIdx>=MAX_PAYLOAD_SIZE-1)
+  	  break;
+    if (idx>=len)
+      break;
+
+    if (payload[idx]==_packet_start_marker_1 ||
+        payload[idx]==_packet_start_marker_2 ||
+        payload[idx]==_packet_start_marker_3 ||
+        payload[idx]==_packet_start_marker_4)
+    {
+      // If a _packet_start_marker_ is found in the payload
+      // The byte is duplicated
+      encodedPayload[encodeIdx]=payload[idx];
+      encodedPayload[encodeIdx+1]=payload[idx];
+      encodeIdx=encodeIdx+2;
+    }
+    else
+    {
+      encodedPayload[encodeIdx]=payload[idx];
+      encodeIdx=encodeIdx+1;
+    }
+    idx++;
+  }
+  // Return the actual number of bytes that have been put to the payload
+  len=idx;
+  // Return the number of bytes that will be sent in the packet
+  return encodeIdx;
+}
+
+uint32_t SerialPackets::decodePayload(uint8_t *payload, uint32_t len)
+{
+
+  uint32_t idx=1;
+  while(true)
+  {
+    if (idx>=len)
+      break;
+      // If a _packet_start_marker_ byte is found in the payload
+      // The next byte is removed
+    if (payload[idx-1]==_packet_start_marker_1 ||
+        payload[idx-1]==_packet_start_marker_2 ||
+        payload[idx-1]==_packet_start_marker_3 ||
+        payload[idx-1]==_packet_start_marker_4)
+    {
+      memcpy(&payload[idx],&payload[idx+1],sizeof(uint8_t)*(len-idx-1));
+      len--;
+    }
+    idx++;
+  }
+  return len;
+}
+
 uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking)
 {
   if (!_stream)
@@ -119,11 +190,6 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
     DEBUG_PRINT("Serial port not defined\n");
     return 0;
   }
-
-  //In hardwareserial for uno sz==64 --> 31 is the max sz of tx pkt to be safe.
-  // Overhead is 7 bytes
-  if (len>MAX_PAYLOAD_SIZE)
-    len=MAX_PAYLOAD_SIZE;
 
   //DEBUG_PRINT("Will send a packet of type %d\n",_tx_packet_type);
 
@@ -138,10 +204,9 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
     return 0;
   }
   // Copy the payload
-  _tx_payload_size=len;
-  memcpy(_tx_payload,payload,_tx_payload_size);
+  _tx_payload_size=encodePayload(payload, len, _tx_payload);
   // Send the packet
-  send(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
+  send_packet(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
   // Save the expected packet counter for the ACK
   _rx_ack_packet_counter=_tx_packet_counter;
   // Comes back to the default packet type
@@ -156,14 +221,20 @@ uint32_t SerialPackets::send(const uint8_t *payload, uint32_t len, bool blocking
 
 // Send a packet with payload and length. 
 // Return the lenght that has been actually sent
-void SerialPackets::send(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter)
+void SerialPackets::send_packet(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter)
 {
   //DEBUG_PRINT("Sending packet with type %d and size %d\n", packet_type, len);
 
   uint8_t tx_buffer[MAX_PAYLOAD_SIZE+10];
   uint8_t b = 0;
 
-  tx_buffer[b++] = _packet_start_marker;
+  // Start marker with four bytes
+  // The purpose of using 4 bytes is to make the start marker different 
+  // from any other byte sequence in the remaining bytes of the packet
+  tx_buffer[b++] = _packet_start_marker_1;
+  tx_buffer[b++] = _packet_start_marker_2;
+  tx_buffer[b++] = _packet_start_marker_3;
+  tx_buffer[b++] = _packet_start_marker_4;
 
   tx_buffer[b++] = packet_type;
 
@@ -180,8 +251,7 @@ void SerialPackets::send(uint8_t *payload, uint8_t len, uint8_t packet_type, uin
   tx_buffer[b++] = c >> 8; // checksum first byte (big/network endian)
   tx_buffer[b++] = c; // checksum second byte (big/network endian)
 
-  tx_buffer[b] = _packet_end_marker;
-  b++;
+  // No end marker
 
   if (packet_type%2 == 1)
     DEBUG_PRINT("Sending ACK packet: ");
@@ -242,7 +312,7 @@ void SerialPackets::processReceivedPacket()
           sprintf((char*)_tx_ack_payload,"%d",_rx_file_last_error);
           _tx_ack_payload_size=3;
         }
-        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
         _tx_ack_ready_to_be_resent=true;
         _rx_file_time=millis();
       }
@@ -279,7 +349,7 @@ void SerialPackets::processReceivedPacket()
           sprintf((char*)_tx_ack_payload,"%d",_rx_file_last_error);
           _tx_ack_payload_size=3;
         }
-        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
         _tx_ack_ready_to_be_resent=true;
 
         _rx_file_time=millis();
@@ -322,7 +392,7 @@ void SerialPackets::processReceivedPacket()
           sprintf((char*)_tx_ack_payload,"%d",_rx_file_last_error);
           _tx_ack_payload_size=3;
         }
-        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
         _tx_ack_ready_to_be_resent=true;
         _rx_file_time=0;
       }
@@ -332,7 +402,7 @@ void SerialPackets::processReceivedPacket()
         _rx_file_last_error=ERROR_FILE_ACK_NOT_RECEIVED;
         if (errorFileCallback!=nullptr)
           errorFileCallback(_rx_file_last_error);
-        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
         _tx_ack_ready_to_be_resent=true;
         _rx_file_time=0;
       }
@@ -344,7 +414,7 @@ void SerialPackets::processReceivedPacket()
           memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
           _rx_user_payload_size=_rx_payload_size;
           // Send the ACK before the user's callback. This is to avoid delay due to the callback when sending the ACK packet
-          send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+          send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
           _tx_ack_ready_to_be_resent=true;
           // Call the user callback
           receiveDataCallback(_rx_user_payload,_rx_user_payload_size);
@@ -369,7 +439,7 @@ void SerialPackets::processReceivedPacket()
       DEBUG_PRINT("Packet of type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_packet_counter);
       // The ACK is sent only when it is ready
       if (_tx_ack_ready_to_be_resent)
-        send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+        send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
     }
   }
   else if (_rx_packet_type%2 == 1)
@@ -445,15 +515,35 @@ void SerialPackets::receive()
     _rx_status = RX_BUSY;
     _rx_buffer[_rx_idx] = b;
 
-    if (_rx_idx == 0 && b != _packet_start_marker) 
+    if (_rx_idx == 0 && b != _packet_start_marker_1) 
     {
       // start marker
       DEBUG_PRINT("Received wrong start marker: 0x%02X\n", b);
       resetRx();
       continue;
     }
-
-    if (_rx_idx == 1) 
+    if (_rx_idx == 1 && b != _packet_start_marker_2) 
+    {
+      // start marker
+      DEBUG_PRINT("Received wrong start marker: 0x%02X\n", b);
+      resetRx();
+      continue;
+    }
+    if (_rx_idx == 2 && b != _packet_start_marker_3) 
+    {
+      // start marker
+      DEBUG_PRINT("Received wrong start marker: 0x%02X\n", b);
+      resetRx();
+      continue;
+    }
+    if (_rx_idx == 3 && b != _packet_start_marker_4) 
+    {
+      // start marker
+      DEBUG_PRINT("Received wrong start marker: 0x%02X\n", b);
+      resetRx();
+      continue;
+    }
+    if (_rx_idx == 4) 
     {
       // packet type: 
       _rx_packet_type = b;
@@ -465,7 +555,7 @@ void SerialPackets::receive()
       }
     }
 
-    if (_rx_idx == 2) 
+    if (_rx_idx == 5) 
     {
       // Packet counter for the received packet
       _rx_packet_counter=b;
@@ -489,7 +579,7 @@ void SerialPackets::receive()
       }
     }
 
-    if (_rx_idx == 3) 
+    if (_rx_idx == 6) 
     {
       // payload size
       _rx_payload_size = b;
@@ -501,7 +591,7 @@ void SerialPackets::receive()
       }
     }
 
-    if (_rx_idx == (3 + _rx_payload_size + 2))
+    if (_rx_idx == (6 + _rx_payload_size + 2))
     {
       // checksum
       uint16_t c1 = (_rx_buffer[_rx_idx - 1] << 8) + b;
@@ -523,16 +613,9 @@ void SerialPackets::receive()
       }
     }
 
-    if (_rx_idx == (3 + _rx_payload_size + 3) && b != _packet_end_marker) 
-    { // end marker
-      DEBUG_PRINT("Wrong end marker: 0x%02X\n", b);
-      resetRx();
-      continue;
-    }
-
-    if (_rx_idx == (3 + _rx_payload_size + 3)) 
+    if (_rx_idx == (6 + _rx_payload_size + 2)) 
     {
-      // end marker
+      // Packet entirely received
       if (_rx_packet_type%2 == 0)
         DEBUG_PRINT("Received NORMAL packet of type %d, counter 0x%02X and payload ",_rx_packet_type,_rx_packet_counter);
       else
@@ -540,6 +623,8 @@ void SerialPackets::receive()
       DEBUG_PRINT_HEX(_rx_payload, _rx_payload_size);
       DEBUG_PRINT("\n");
       _rx_idx = 0;
+      // Decode the payload
+      _rx_payload_size=decodePayload(_rx_payload, _rx_payload_size);
       // For conveniency for printing, add null char at the end of the payload
       // We assume _rx_payload_size<=MAX_PAYLOAD_SIZE)
       _rx_payload[_rx_payload_size]=0x00;
@@ -579,7 +664,7 @@ uint8_t SerialPackets::update(bool blocking)
       if (_tx_nb_trials<_max_nb_trials)
       {
         DEBUG_PRINT("Retry sending %d of %d\n",_tx_nb_trials+1,_max_nb_trials);
-        send(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
+        send_packet(_tx_payload, _tx_payload_size, _tx_packet_type, _tx_packet_counter);
         _tx_status=TX_WAIT_ACK;
         _tx_time=millis();
         _tx_nb_trials++;
@@ -592,7 +677,11 @@ uint8_t SerialPackets::update(bool blocking)
         {
           // Send a notification with the payload that could not be sent
           if (errorNotificationCallback!=nullptr)
+          {
+            // Decode the payload before the callback
+            _tx_payload_size=decodePayload(_tx_payload, _tx_payload_size);
             errorNotificationCallback(_tx_payload, _tx_payload_size);
+          }
         }
         else
         {
@@ -680,7 +769,7 @@ int SerialPackets::read()
     {
       // The packet has been entirely read by the user (through readString).
       // It is time to send the ack in order to receive the next packet
-      send(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
+      send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
       _tx_ack_ready_to_be_resent=true;
     }
   }

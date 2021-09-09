@@ -11,16 +11,16 @@
 
 #define PACKET_UNDEFINED      0xFF
 
-#define PACKET_DATA           0
-#define PACKET_DATA_ACK       1
-#define PACKET_FILE_OPEN      2
-#define PACKET_FILE_OPEN_ACK  3
-#define PACKET_FILE_DATA      4
-#define PACKET_FILE_DATA_ACK  5
-#define PACKET_FILE_CLOSE     6
-#define PACKET_FILE_CLOSE_ACK 7
-#define PACKET_FILE_ABORD     8
-#define PACKET_FILE_ABORD_ACK 9
+#define PACKET_DATA           0x00
+#define PACKET_DATA_ACK       0x01
+#define PACKET_FILE_OPEN      0x02
+#define PACKET_FILE_OPEN_ACK  0x03
+#define PACKET_FILE_DATA      0x04
+#define PACKET_FILE_DATA_ACK  0x05
+#define PACKET_FILE_CLOSE     0x06
+#define PACKET_FILE_CLOSE_ACK 0x07
+#define PACKET_FILE_ABORD     0x08
+#define PACKET_FILE_ABORD_ACK 0x09
 
 #define TX_READY              0
 #define TX_WAIT_ACK           1
@@ -52,6 +52,8 @@ public:
     // Send a packet. If the parameter blocking is set to true, the function only returns
     // when the ACK packet has been received or after the timeout (i.e. the status is TX_READY).
     // The next packet can then be sent straight away
+    // The method returns the number of bytes that have been actually sent.
+    // Be aware that this value can be different from the paramter "len"
     uint32_t send(const uint8_t *payload, uint32_t len, bool blocking=false);
 
     // Set the callback for receiving packets
@@ -99,19 +101,21 @@ public:
     // Maximum size of the payload for one packet
     // Buffer size for software serial 64
     // Safe value: 30
-    // 256: https://arduino-esp8266.readthedocs.io/en/latest/reference.html#serial
+    // https://arduino-esp8266.readthedocs.io/en/latest/reference.html#serial
     // Works 127, 200. Should not be more because the counter for the buzzer size is uint8_t
     static const uint8_t MAX_PAYLOAD_SIZE=200;
 
     // For statistics
     uint32_t _nb_lost_packets=0;
 private:
-    void send(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter);
+    void send_packet(uint8_t *payload, uint8_t len, uint8_t packet_type, uint8_t packet_counter);
     void receive();
     void processReceivedPacket();
     void resetRx();
     void resetTx();
     uint16_t checksum(uint8_t *buffer, uint8_t len);
+    uint32_t encodePayload(const uint8_t *payload, uint32_t &len, uint8_t *encodedPayload);
+    uint32_t decodePayload(uint8_t *payload, uint32_t len);
 
 private:
     uint16_t _time_out=50;        // Time after which the ACK packet is considered lost 
