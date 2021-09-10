@@ -130,7 +130,6 @@ private:
     bool (*receiveFileDataCallback)(uint8_t *,uint8_t) = nullptr;
     void (*closeFileCallback)() = nullptr;
     void (*errorFileCallback) (int) = nullptr;
-
     Stream* _stream=nullptr;
     Stream* _debugPort=nullptr;
 

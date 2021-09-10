@@ -261,6 +261,7 @@ void SerialPackets::send_packet(uint8_t *payload, uint8_t len, uint8_t packet_ty
   DEBUG_PRINT_HEX(tx_buffer, b);
   DEBUG_PRINT("\n");
 
+  //if (_stream->availableForWrite()>b)  // This cause a bug for ESP8266
   _stream->write(tx_buffer, b);
 }
 
@@ -450,20 +451,18 @@ void SerialPackets::processReceivedPacket()
     if (_rx_prev_ack_packet_counter!=_rx_packet_counter)
     {
       _rx_prev_ack_packet_counter=_rx_packet_counter;
-      resetTx();
       // Process the payload from the ACK packet. The ACK packet is not supposed to contain user data
       if (_rx_packet_type==PACKET_FILE_OPEN_ACK || 
-               _rx_packet_type==PACKET_FILE_DATA_ACK ||
-               _rx_packet_type==PACKET_FILE_CLOSE_ACK )
+          _rx_packet_type==PACKET_FILE_DATA_ACK ||
+          _rx_packet_type==PACKET_FILE_CLOSE_ACK )
       {
         // This indicates an error sent by the MCU receiving the file
         if (_rx_payload_size==3)
         {
           _tx_file_last_error=atoi((char*)_rx_payload);
-          if (errorFileCallback!=nullptr)
-            errorFileCallback(_tx_file_last_error);
         }
       }
+      resetTx();
     }
     else
       DEBUG_PRINT("Packet with type %d and counter 0x%02X already processed\n", _rx_packet_type, _rx_prev_packet_counter);
@@ -651,10 +650,10 @@ uint8_t SerialPackets::update(bool blocking)
     // After 5 seconds from the last file packet, we abord receiving the file
     if (_rx_file_time!=0 && (millis()-_rx_file_time > 5000))
     {
+      _rx_file_time=0;
       _rx_file_last_error=ERROR_FILE_RECEIVING_TIMEOUT;
       if (errorFileCallback!=nullptr)
         errorFileCallback(_rx_file_last_error);
-      _rx_file_time=0;
     }
 
     // Check for the time out for receiving the ACK packet
@@ -687,8 +686,6 @@ uint8_t SerialPackets::update(bool blocking)
         {
           // In case of sending a file, we do not call the callback but set a flag
           _tx_file_last_error=ERROR_FILE_ACK_NOT_RECEIVED;
-          if (errorFileCallback!=nullptr)
-            errorFileCallback(_tx_file_last_error);
         }
         // Give up sending again the DATA package, call resetTx for sending next data
         resetTx();
