@@ -19,8 +19,8 @@
 #define PACKET_FILE_DATA_ACK  0x05
 #define PACKET_FILE_CLOSE     0x06
 #define PACKET_FILE_CLOSE_ACK 0x07
-#define PACKET_FILE_ABORD     0x08
-#define PACKET_FILE_ABORD_ACK 0x09
+#define PACKET_FILE_ABORT     0x08
+#define PACKET_FILE_ABORT_ACK 0x09
 
 #define TX_READY              0
 #define TX_WAIT_ACK           1
@@ -30,7 +30,7 @@
 #define ERROR_FILE_ACK_NOT_RECEIVED    -1
 #define ERROR_FILE_WRONG_CRC           -2
 #define ERROR_FILE_USER                -3
-#define ERROR_FILE_ABORD               -4
+#define ERROR_FILE_ABORT               -4
 #define ERROR_FILE_RECEIVING_TIMEOUT   -5
 #define ERROR_FILE_NOT_OPEN            -6
 #define ERROR_FILE_ALREADY_OPENED      -7
@@ -74,7 +74,7 @@ public:
     int closeFile();
     // Abord sending the file.
     // The device which is receiving the file will receive an error code informing that the file tranfer has been aborted
-    int abordFile();
+    int abortFile();
 
     //////////////////////////////////
     // Methods for receiving a file //

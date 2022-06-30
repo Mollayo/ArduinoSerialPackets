@@ -397,10 +397,10 @@ void SerialPackets::processReceivedPacket()
         _tx_ack_ready_to_be_resent=true;
         _rx_file_time=0;
       }
-      else if (_rx_packet_type==PACKET_FILE_ABORD)
+      else if (_rx_packet_type==PACKET_FILE_ABORT)
       {
         // File abord either by user or when the ACK is not received by the sender
-        _rx_file_last_error=ERROR_FILE_ABORD;		// ERROR_FILE_ACK_NOT_RECEIVED
+        _rx_file_last_error=ERROR_FILE_ABORT;		// ERROR_FILE_ACK_NOT_RECEIVED
         if (errorFileCallback!=nullptr)
           errorFileCallback(_rx_file_last_error);
         send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
@@ -546,7 +546,7 @@ void SerialPackets::receive()
     {
       // packet type: 
       _rx_packet_type = b;
-      if (_rx_packet_type<PACKET_DATA || _rx_packet_type>PACKET_FILE_ABORD_ACK)
+      if (_rx_packet_type<PACKET_DATA || _rx_packet_type>PACKET_FILE_ABORT_ACK)
       {
           DEBUG_PRINT("Wrong packet type 0x%02X\n", _rx_packet_type);
           resetRx();
@@ -848,7 +848,7 @@ int SerialPackets::closeFile()
   if (_tx_file_last_error==0)
     _tx_packet_type=PACKET_FILE_CLOSE;
   else
-    _tx_packet_type=PACKET_FILE_ABORD;
+    _tx_packet_type=PACKET_FILE_ABORT;
 
   // Send the CRC32
   int32_t crc=_tx_file_crc.finalize();
@@ -860,12 +860,12 @@ int SerialPackets::closeFile()
   return _tx_file_last_error;
 }
 
-int SerialPackets::abordFile()
+int SerialPackets::abortFile()
 {
   // Wait for the previous ACK to be received
   update(true);
 
-  _tx_packet_type=PACKET_FILE_ABORD;
+  _tx_packet_type=PACKET_FILE_ABORT;
 
   // Send 0x00 for the CRC32
   int32_t crc=0;
