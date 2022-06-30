@@ -63,16 +63,30 @@ public:
     // The DATA packet that could not be sent are given as parameters to this callback
     void setErrorCallback(void (*callback)(uint8_t *,uint8_t));
 
-    /////////////////////////////////////////
-    // Methods for sending/receiving files //
-    /////////////////////////////////////////
+    ////////////////////////////////
+    // Methods for sending a file //
+    ////////////////////////////////
+    // Prepare for sending the file. Return 0 or error code
     int openFile(const char* fileName=nullptr);
+    // Send file data. Return the number of bytes sent. This can be smaller than the parameter len.
     int sendFileData(const uint8_t *payload, uint32_t len);
+    // Finish sending the file. This includes the CRC check
     int closeFile();
+    // Abord sending the file.
+    // The device which is receiving the file will receive an error code informing that the file tranfer has been aborted
+    int abordFile();
 
+    //////////////////////////////////
+    // Methods for receiving a file //
+    //////////////////////////////////
+    // Callback for preparing receiving the file. The parameters are the file name and the length of the file name 
     void setOpenFileCallback(bool (*callback)(uint8_t *,uint8_t));
+    // Callback for receiving the file data. The parameters are the data and its length
     void setReceiveFileDataCallback(bool (*callback)(uint8_t *,uint8_t));
+    // Callback for finishing receiving the file data.
     void setCloseFileCallback(void (*callback)());
+    // Error notification callback for receiving files
+    // Might be called several times consecutively
     void setErrorFileCallback(void (*callback)(int));
 
     /////////////////////////////////////////

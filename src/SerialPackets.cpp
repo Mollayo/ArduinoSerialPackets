@@ -333,16 +333,16 @@ void SerialPackets::processReceivedPacket()
             _rx_file_crc.update(_rx_payload[i]);
 
           // Call the callback
-		      if (receiveFileDataCallback!=nullptr)
-		      {
-		        memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
-		        _rx_user_payload_size=_rx_payload_size;
-		        bool OK=receiveFileDataCallback(_rx_user_payload,_rx_user_payload_size);
+          if (receiveFileDataCallback!=nullptr)
+          {
+	    memcpy(_rx_user_payload,_rx_payload,_rx_payload_size+1);
+            _rx_user_payload_size=_rx_payload_size;
+            bool OK=receiveFileDataCallback(_rx_user_payload,_rx_user_payload_size);
             _rx_user_payload_size=0;
-		        if (!OK)
-		          _rx_file_last_error=ERROR_FILE_USER;
-		      }
-				}
+            if (!OK)
+              _rx_file_last_error=ERROR_FILE_USER;
+          }
+	}
 
         // Send the ACK
         if (_rx_file_last_error!=0)
@@ -399,8 +399,8 @@ void SerialPackets::processReceivedPacket()
       }
       else if (_rx_packet_type==PACKET_FILE_ABORD)
       {
-        // File abord only happens when the ACK is not received by the sender
-        _rx_file_last_error=ERROR_FILE_ACK_NOT_RECEIVED;
+        // File abord either by user or when the ACK is not received by the sender
+        _rx_file_last_error=ERROR_FILE_ABORD;		// ERROR_FILE_ACK_NOT_RECEIVED
         if (errorFileCallback!=nullptr)
           errorFileCallback(_rx_file_last_error);
         send_packet(_tx_ack_payload, _tx_ack_payload_size, _tx_ack_packet_type, _tx_ack_packet_counter);
@@ -844,6 +844,7 @@ int SerialPackets::closeFile()
   // Wait for the previous ACK to be received
   update(true);
 
+  // If there was an error previously, we send an abord packet
   if (_tx_file_last_error==0)
     _tx_packet_type=PACKET_FILE_CLOSE;
   else
@@ -858,6 +859,24 @@ int SerialPackets::closeFile()
 
   return _tx_file_last_error;
 }
+
+int SerialPackets::abordFile()
+{
+  // Wait for the previous ACK to be received
+  update(true);
+
+  _tx_packet_type=PACKET_FILE_ABORD;
+
+  // Send 0x00 for the CRC32
+  int32_t crc=0;
+  uint32_t lenSent=send((uint8_t*)&crc, sizeof(crc), false);
+
+  // Wait for the previous ACK to be received
+  update(true);
+
+  return _tx_file_last_error;
+}
+
 
 void SerialPackets::setOpenFileCallback(bool (*callback)(uint8_t *,uint8_t))
 {
