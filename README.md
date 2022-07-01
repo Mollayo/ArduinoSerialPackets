@@ -1,7 +1,40 @@
-# ArduinoSerialPackets
-A library for sending/receiving packets over serial connection with CRC32 and ACK packets. One advantage of this library is the use of ACK packets and the ability to automatically resend lost data packets in case they have not been received. This makes the serial communication reliable even if some packets are lost. Connection speed with serial software can be set up to 19200 bps and connection with hardware serial (on ESP8266) can be set to 460800 bps. The file transfer rate is about 25 kB/s.
 
-Dependencies:
-- CRC32 library: https://github.com/bakercp/CRC32
+# ArduinoSerialPackets   [![Badge License]][License]
+
+*Serial transmission library that includes **CRC32** & **ACK**.*
+
+<br>
+
+## Features
+
+-   Reliable Serial Communication
+
+    *Lost & damanged packages are resend.*
+
+-   Maximum Serial Speed
+    
+    - Software : `19200 bps`
+    
+    - Hardware : `460800 bps`
+
+-   File Transfer Speed
+
+    `~25 KB / s`
+
+<br>
+<br>
+
+## Dependencies
+
+- **[CRC32]**
+
+<br>
 
 
+<!----------------------------------------------------------------------------->
+
+[Badge License]: https://img.shields.io/badge/License-Unknown-darkgray.svg?style=for-the-badge
+
+[CRC32]: https://github.com/bakercp/CRC32
+
+[License]: #
