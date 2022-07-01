@@ -9,13 +9,13 @@
 
 -   Reliable Serial Communication
 
-    *Lost & damanged packages are resend.*
+    *Lost & damaged packages are resend.*
 
 -   Maximum Serial Speed
     
-    - Software : `19200 bps`
+    - Software : `19200 bps`
     
-    - Hardware : `460800 bps`
+    - Hardware : `460800 bps`
 
 -   File Transfer Speed
 
@@ -26,7 +26,7 @@
 
 ## Dependencies
 
-- **[CRC32]**
+- **[CRC32]** by **[@bakercp]**
 
 <br>
 
@@ -35,6 +35,7 @@
 
 [Badge License]: https://img.shields.io/badge/License-Unknown-darkgray.svg?style=for-the-badge
 
+[@bakercp]: https://github.com/bakercp
 [CRC32]: https://github.com/bakercp/CRC32
 
 [License]: #
