@@ -9,8 +9,6 @@
 
 -   Reliable Serial Communication
 
-    *Lost & damaged packages are resend.*
-
 -   Maximum Serial Speed
     
     - Software : `19200 bps`
@@ -20,6 +18,22 @@
 -   File Transfer Speed
 
     `~25 KB / s`
+    
+<br>
+<br>
+
+## Details
+
+The library ensures reliable communication by <br>
+resending lost ACK packages, as well as ones <br>
+that have been damaged.
+
+Damaged packages can be detected thought the <br>
+use of the CRC32 cipher that acts as a checksum.
+
+This managed transmission protocol can be especially <br>
+useful when you want to send large amounts of data, <br>
+such as firmware for instance.
 
 <br>
 <br>
