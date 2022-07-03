@@ -83,8 +83,9 @@ public:
     void setOpenFileCallback(bool (*callback)(uint8_t *,uint8_t));
     // Callback for receiving the file data. The parameters are the data and its length
     void setReceiveFileDataCallback(bool (*callback)(uint8_t *,uint8_t));
-    // Callback for finishing receiving the file data.
-    void setCloseFileCallback(void (*callback)());
+    // Callback for finishing receiving the file data. The parameter is the CRC
+    // Can be used to check if the CRC of the received data matches the CRC given as parameter
+    void setCloseFileCallback(bool (*callback)(uint32_t));
     // Error notification callback for receiving files
     // Might be called several times consecutively
     void setErrorFileCallback(void (*callback)(int));
@@ -142,7 +143,7 @@ private:
     void (*receiveDataCallback)(uint8_t *,uint8_t) = nullptr;
     bool (*openFileCallback)(uint8_t *,uint8_t) = nullptr;
     bool (*receiveFileDataCallback)(uint8_t *,uint8_t) = nullptr;
-    void (*closeFileCallback)() = nullptr;
+    bool (*closeFileCallback)(uint32_t) = nullptr;
     void (*errorFileCallback) (int) = nullptr;
     Stream* _stream=nullptr;
     Stream* _debugPort=nullptr;

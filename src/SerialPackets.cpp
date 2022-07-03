@@ -384,7 +384,11 @@ void SerialPackets::processReceivedPacket()
             DEBUG_PRINT("CRC matching for the uploaded file 0x%08X\n",crc);
             // The CRC match. We call the callback for closing the file
             if (closeFileCallback!=nullptr)
-              closeFileCallback();
+            {
+              bool OK=closeFileCallback(rcvCrc);
+              if (!OK)
+                _rx_file_last_error=ERROR_FILE_USER;
+            }
           }
         }
         // Send the ACK
@@ -854,7 +858,7 @@ int SerialPackets::closeFile()
   int32_t crc=_tx_file_crc.finalize();
   uint32_t lenSent=send((uint8_t*)&crc, sizeof(crc), false);
 
-  // Wait for the previous ACK to be received
+  // Wait for the ACK to be received
   update(true);
 
   return _tx_file_last_error;
@@ -888,7 +892,7 @@ void SerialPackets::setReceiveFileDataCallback(bool (*callback)(uint8_t *,uint8_
   receiveFileDataCallback = callback;
 }
 
-void SerialPackets::setCloseFileCallback(void (*callback)())
+void SerialPackets::setCloseFileCallback(bool (*callback)(uint32_t))
 {
   closeFileCallback = callback;
 }
